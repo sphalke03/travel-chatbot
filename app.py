@@ -2,9 +2,11 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# Initialize Firebase
-cred = credentials.Certificate('firebase_key.json')  
-firebase_admin.initialize_app(cred)
+# Initialize Firebase only once
+if not firebase_admin._apps:
+    cred = credentials.Certificate(r'C:\Users\thesa\OneDrive\Desktop\firebase_key.json')  # <-- Correct path
+    firebase_admin.initialize_app(cred)
+
 db = firestore.client()
 
 # Streamlit App
@@ -13,6 +15,10 @@ st.title("✈️ Travel Booking Chatbot")
 # Initialize session
 if 'messages' not in st.session_state:
     st.session_state.messages = []
+if 'user_input' not in st.session_state:
+    st.session_state.user_input = ""
+if 'user_name' not in st.session_state:
+    st.session_state.user_name = ""
 
 # Chatbot logic
 def chatbot_response(user_input):
@@ -33,32 +39,46 @@ def chatbot_response(user_input):
     else:
         return "I'm here to help with travel packages, bookings, and destinations. Could you please rephrase?"
 
-# Input from user
-user_name = st.text_input("Enter your name:")
+# Ask for user's name (only once)
+if not st.session_state.user_name:
+    name_input = st.text_input("Enter your name to start chatting:")
+    if st.button("Start Chatting"):
+        if name_input.strip():
+            st.session_state.user_name = name_input.strip()
+        else:
+            st.warning("Please enter a valid name.")
 
-user_input = st.text_input("You:", "")
+# Once name is entered, continue with chat
+if st.session_state.user_name:
+    st.success(f"Hello {st.session_state.user_name}! 👋 Start chatting below:")
 
-if st.button("Send"):
-    if user_name and user_input:
-        # Get bot reply
-        bot_reply = chatbot_response(user_input)
+    st.text_input("You:", key="user_input")
 
-        # Display conversation
-        st.session_state.messages.append(("You", user_input))
-        st.session_state.messages.append(("Bot", bot_reply))
+    if st.button("Send"):
+        if st.session_state.user_input.strip():
+            # Bot reply
+            bot_reply = chatbot_response(st.session_state.user_input)
 
-        # Store in Firebase
-        chat_entry = {
-            'name': user_name,
-            'question': user_input,
-            'bot_response': bot_reply
-        }
-        db.collection('chat_data').add(chat_entry)
+            # Update chat history
+            st.session_state.messages.append(("You", st.session_state.user_input))
+            st.session_state.messages.append(("Bot", bot_reply))
+
+            # Store in Firebase
+            chat_entry = {
+                'name': st.session_state.user_name,
+                'question': st.session_state.user_input,
+                'bot_response': bot_reply
+            }
+            db.collection('chat_data').add(chat_entry)
+
+            # Clear input after sending
+            st.session_state.user_input = ""
 
 # Display chat history
-st.subheader("Conversation History:")
-for sender, message in st.session_state.messages:
-    if sender == "You":
-        st.markdown(f"**You:** {message}")
-    else:
-        st.markdown(f"**Bot:** {message}")
+if st.session_state.messages:
+    st.subheader("Conversation History:")
+    for sender, message in st.session_state.messages:
+        if sender == "You":
+            st.markdown(f"**You:** {message}")
+        else:
+            st.markdown(f"**Bot:** {message}")
